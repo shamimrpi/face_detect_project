@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facial Detection and Matching</title>
+</head>
+<body>
+    <h1>Facial Detection and Matching</h1>
+    <input type="file" accept="image/*" onchange="loadReferenceImage(event)">
+    <video id="video" autoplay style="display: none"></video>
+    <canvas id="canvas" width="500px" height="400px"></canvas>
+    <div id="result"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+    <script>
+        let model;
+        let ctx = document.getElementById("canvas").getContext("2d");
+        let referenceImage = new Image();
+        let referenceFaces;
+
+        const loadReferenceImage = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            referenceImage.onload = async () => {
+                // Once the reference image is loaded, detect faces in it
+                referenceFaces = await detectFaces(referenceImage);
+            };
+            referenceImage.src = URL.createObjectURL(file);
+        };
+
+        const accessCamera = () => {
+            navigator.mediaDevices.getUserMedia({
+                video: { width: 500, height: 400 },
+                audio: false,
+            })
+            .then((stream) => {
+                const video = document.getElementById("video");
+                video.srcObject = stream;
+            })
+            .catch((error) => {
+                console.error('Error accessing camera:', error);
+            });
+        };
+
+        const detectFaces = async (img) => {
+            const predictions = await model.estimateFaces(img, false);
+            return predictions;
+        };
+
+        const compareFaces = (liveFaces, referenceFaces) => {
+            // Assuming only one face is in the reference image
+            const referenceFace = referenceFaces[0];
+            for (let liveFace of liveFaces) {
+                // Compare the coordinates of the detected faces
+                const threshold = 50; // Adjust threshold as needed
+                if (Math.abs(liveFace.topLeft[0] - referenceFace.topLeft[0]) < threshold &&
+                    Math.abs(liveFace.topLeft[1] - referenceFace.topLeft[1]) < threshold &&
+                    Math.abs(liveFace.bottomRight[0] - referenceFace.bottomRight[0]) < threshold &&
+                    Math.abs(liveFace.bottomRight[1] - referenceFace.bottomRight[1]) < threshold) {
+                    return true; // Face match found
+                }
+            }
+            return false; // No face match found
+        };
+
+        const detectAndMatchFaces = async () => {
+            const liveFaces = await detectFaces(video);
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            ctx.drawImage(video, 0, 0, 500, 400);
+
+            if (referenceFaces && referenceFaces.length > 0) {
+                if (compareFaces(liveFaces, referenceFaces)) {
+                    // Display match found
+                    document.getElementById("result").innerText = "Match found!";
+                } else {
+                    // Display no match found
+                    document.getElementById("result").innerText = "No match found.";
+                }
+            } else {
+                // Reference image not loaded
+                document.getElementById("result").innerText = "Please upload a reference image.";
+            }
+        };
+
+        const loadModel = async () => {
+            model = await blazeface.load();
+        };
+
+        loadModel();
+        accessCamera();
+        setInterval(detectAndMatchFaces, 200); // Adjust the interval as needed
+    </script>
+</body>
+</html>

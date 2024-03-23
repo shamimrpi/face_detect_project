@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Facial Detection and Recognition</title>
+</head>
+<body>
+  <h1>Facial Detection and Recognition</h1>
+  <video id="video" autoplay style="display: none"></video>
+  <canvas id="canvas" width="500" height="400"></canvas>
+  <input type="file" id="imageUpload" accept="image/*">
+</body>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+<script>
+  let video = document.getElementById("video");
+  let model;
+  let canvas = document.getElementById("canvas");
+  let ctx = canvas.getContext("2d");
+
+  const accessCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 500, height: 400 },
+        audio: false,
+      });
+      video.srcObject = stream;
+    } catch (error) {
+      console.error("Error accessing camera:", error);
+    }
+  };
+
+  const detectFaces = async () => {
+    if (model) {
+      try {
+        const prediction = await model.estimateFaces(video, false);
+        ctx.drawImage(video, 0, 0, 500, 400);
+        prediction.forEach((predictions) => {
+          ctx.beginPath();
+          ctx.lineWidth = "4";
+          ctx.strokeStyle = "yellow";
+          ctx.rect(
+            predictions.topLeft[0],
+            predictions.topLeft[1],
+            predictions.bottomRight[0] - predictions.topLeft[0],
+            predictions.bottomRight[1] - predictions.topLeft[1]
+          );
+          ctx.stroke();
+        });
+      } catch (error) {
+        console.error("Error detecting faces:", error);
+      }
+    }
+  };
+
+  accessCamera();
+  video.addEventListener("loadeddata", async () => {
+    try {
+      model = await blazeface.load();
+      setInterval(detectFaces, 40);
+    } catch (error) {
+      console.error("Error loading model:", error);
+    }
+  });
+
+  document.getElementById("imageUpload").addEventListener("change", handleImageUpload);
+
+  async function handleImageUpload(event) {
+    const file = event.target.files[0];
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = async function(e) {
+      img.onload = async function() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        if (model) {
+          try {
+            const prediction = await model.estimateFaces(img, false);
+            if (prediction.length === 0) {
+              console.log("No faces detected in the uploaded image.");
+              return;
+            }
+            const uploadedFace = prediction[0];
+            const liveFaces = await model.estimateFaces(video, false);
+            if (liveFaces.length === 0) {
+              console.log("No faces detected in the live camera feed.");
+              return;
+            }
+            const liveFace = liveFaces[0];
+            const match = compareFaces(uploadedFace, liveFace);
+            if (match) {
+              console.log("Match found!");
+              drawFaceBox(liveFace);
+            } else {
+              console.log("No match found.");
+            }
+          } catch (error) {
+            console.error("Error detecting faces in image:", error);
+          }
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function compareFaces(face1, face2) {
+    // Implement your face comparison logic here
+    // For simplicity, we're not implementing the comparison logic in this example
+    // Replace this with your actual face recognition algorithm
+    // For demonstration, we'll just check if the face positions are similar
+    const threshold = 50; // Adjust threshold as needed
+    const distance = Math.sqrt(
+      Math.pow(face1.topLeft[0] - face2.topLeft[0], 2) +
+      Math.pow(face1.topLeft[1] - face2.topLeft[1], 2)
+    );
+    return distance < threshold;
+  }
+
+  function drawFaceBox(face) {
+    ctx.beginPath();
+    ctx.lineWidth = "4";
+    ctx.strokeStyle = "green"; // Change color to indicate match
+    ctx.rect(
+      face.topLeft[0],
+      face.topLeft[1],
+      face.bottomRight[0] - face.topLeft[0],
+      face.bottomRight[1] - face.topLeft[1]
+    );
+    ctx.stroke();
+  }
+</script>
+</html>
